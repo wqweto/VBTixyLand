@@ -355,16 +355,16 @@ Private Function pvPaintControl(ByVal hDC As Long) As Boolean
         pvPrepareMatrix TimerEx - m_dblStartTime, m_aMatrix
         pvPrepareAttribs m_sngOpacity, m_hAttributes
     End If
-    If GdipFailed(GdipCreateFromHDC(hDC, hGraphics)) Then
+    If CheckFailed(GdipCreateFromHDC(hDC, hGraphics)) Then
         GoTo QH
     End If
-    If GdipFailed(GdipSetSmoothingMode(hGraphics, SmoothingModeAntiAlias)) Then
+    If CheckFailed(GdipSetSmoothingMode(hGraphics, SmoothingModeAntiAlias)) Then
         GoTo QH
     End If
-    If GdipFailed(GdipCreateSolidFill(&HFFFFFFFF, hWhiteBrush)) Then
+    If CheckFailed(GdipCreateSolidFill(&HFFFFFFFF, hWhiteBrush)) Then
         GoTo QH
     End If
-    If GdipFailed(GdipCreateSolidFill(&HFFFF2030, hRedBrush)) Then
+    If CheckFailed(GdipCreateSolidFill(&HFFFF2030, hRedBrush)) Then
         GoTo QH
     End If
     sngStepX = ScaleWidth / m_lMatrixSize
@@ -373,7 +373,7 @@ Private Function pvPaintControl(ByVal hDC As Long) As Boolean
         sngValue = (1 - Abs(Clamp(m_aMatrix(lIdx), -1, 1))) * 0.95 + 0.05
         sngOffsetX = sngValue * sngStepX
         sngOffsetY = sngValue * sngStepY
-        If GdipFailed(GdipFillEllipse(hGraphics, IIf(m_aMatrix(lIdx) >= 0, hWhiteBrush, hRedBrush), _
+        If CheckFailed(GdipFillEllipse(hGraphics, IIf(m_aMatrix(lIdx) >= 0, hWhiteBrush, hRedBrush), _
                 sngStepX * (lIdx Mod m_lMatrixSize) + sngOffsetX / 2, _
                 sngStepY * (lIdx \ m_lMatrixSize) + sngOffsetY / 2, _
                 sngStepX - sngOffsetX, _
@@ -410,7 +410,7 @@ Private Function pvPrepareAttribs(ByVal sngAlpha As Single, hAttributes As Long)
     Dim hNewAttributes  As Long
     
     On Error GoTo EH
-    If GdipCreateImageAttributes(hNewAttributes) <> 0 Then
+    If CheckFailed(GdipCreateImageAttributes(hNewAttributes)) Then
         GoTo QH
     End If
     clrMatrix(0, 0) = 1
@@ -418,7 +418,7 @@ Private Function pvPrepareAttribs(ByVal sngAlpha As Single, hAttributes As Long)
     clrMatrix(2, 2) = 1
     clrMatrix(3, 3) = sngAlpha
     clrMatrix(4, 4) = 1
-    If GdipSetImageAttributesColorMatrix(hNewAttributes, 0, 1, clrMatrix(0, 0), clrMatrix(0, 0), 0) <> 0 Then
+    If CheckFailed(GdipSetImageAttributesColorMatrix(hNewAttributes, 0, 1, clrMatrix(0, 0), clrMatrix(0, 0), 0)) Then
         GoTo QH
     End If
     '--- commit
@@ -518,10 +518,10 @@ Private Function Clamp(ByVal sngValue As Single, ByVal sngMin As Single, ByVal s
     End Select
 End Function
 
-Private Function GdipFailed(ByVal lResult As Long) As Boolean
+Private Function CheckFailed(ByVal lResult As Long) As Boolean
     If lResult <> 0 Then
-        GdipFailed = True
-        m_sLastError = "lResult=" & lResult
+        CheckFailed = True
+        m_sLastError = "GDI+ error " & lResult
     End If
 End Function
 
@@ -715,6 +715,7 @@ Private Sub UserControl_Terminate()
         Call DeleteObject(m_hRedrawDib)
         m_hRedrawDib = 0
     End If
+    ActiveScriptTerminate m_uScript
 End Sub
 
 '=========================================================================

@@ -1,4 +1,11 @@
 Attribute VB_Name = "TixyScript"
+'=========================================================================
+'
+' VB6 TixyLand Control (c) 2020 by wqweto@gmail.com
+'
+' Based on the original idea of https://tixy.land
+'
+'=========================================================================
 Option Explicit
 DefObj A-Z
 
@@ -83,24 +90,19 @@ End Enum
 '=========================================================================
 
 Public Function ActiveScriptInit(uData As UcsActiveScriptData, sLang As String, pCallback As Object) As Boolean
-    Const STR_CLSID_Chakra                As String = "{16D51579-A30B-4C8B-A276-0FF4DC41E755}"
-    Const STR_IID_IUnknown                As String = "{00000000-0000-0000-C000-000000000046}"
-    Const STR_IID_IActiveScript           As String = "{BB1A2AE1-A4F9-11cf-8F20-00805F2CD064}"
-    Const STR_IID_IActiveScriptParse      As String = "{BB1A2AE2-A4F9-11cf-8F20-00805F2CD064}"
-    Const STR_IID_IActiveScriptSite       As String = "{DB01A1E3-A42B-11cf-8F20-00805F2CD064}"
-    Const STR_IID_IActiveScriptSiteWindow As String = "{D10F6761-83E9-11cf-8F20-00805F2CD064}"
-    Const CLSCTX_INPROC_SERVER            As Long = 1
+    Const STR_CLSID_Chakra     As String = "{16D51579-A30B-4C8B-A276-0FF4DC41E755}"
+    Const CLSCTX_INPROC_SERVER As Long = 1
     Dim hResult         As Long
     Dim aCLSID(0 To 3)  As Long
     Dim pUnk            As IUnknown
     
     '--- perform one-time initializations
     If IID_IUnknown(3) = 0 Then
-        Call IIDFromString(StrPtr(STR_IID_IUnknown), IID_IUnknown(0))
-        Call IIDFromString(StrPtr(STR_IID_IActiveScript), IID_IActiveScript(0))
-        Call IIDFromString(StrPtr(STR_IID_IActiveScriptParse), IID_IActiveScriptParse(0))
-        Call IIDFromString(StrPtr(STR_IID_IActiveScriptSite), IID_IActiveScriptSite(0))
-        Call IIDFromString(StrPtr(STR_IID_IActiveScriptSiteWindow), IID_IActiveScriptSiteWindow(0))
+        Call IIDFromString(StrPtr("{00000000-0000-0000-C000-000000000046}"), IID_IUnknown(0))
+        Call IIDFromString(StrPtr("{BB1A2AE1-A4F9-11cf-8F20-00805F2CD064}"), IID_IActiveScript(0))
+        Call IIDFromString(StrPtr("{BB1A2AE2-A4F9-11cf-8F20-00805F2CD064}"), IID_IActiveScriptParse(0))
+        Call IIDFromString(StrPtr("{DB01A1E3-A42B-11cf-8F20-00805F2CD064}"), IID_IActiveScriptSite(0))
+        Call IIDFromString(StrPtr("{D10F6761-83E9-11cf-8F20-00805F2CD064}"), IID_IActiveScriptSiteWindow(0))
     End If
     If m_lVTable(0) = 0 Then
         m_lVTable(0) = VBA.CLng(AddressOf IActiveScriptSite_QueryInterface)
