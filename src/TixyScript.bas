@@ -8,6 +8,7 @@ Attribute VB_Name = "TixyScript"
 '=========================================================================
 Option Explicit
 DefObj A-Z
+Private Const STR_MODULE_NAME As String = "TixyScript"
 
 '=========================================================================
 ' API
@@ -19,8 +20,7 @@ Private Const TYPE_E_ELEMENTNOTFOUND    As Long = &H8002802B
 
 Private Declare Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" (Destination As Any, Source As Any, ByVal Length As Long)
 Private Declare Function CLSIDFromProgID Lib "ole32" (ByVal lpszProgID As Long, ByRef lpclsid As Any) As Long
-Private Declare Function IIDFromString Lib "ole32" (ByVal lpsz As Long, lpiid As Any) As Long
-Private Declare Function CoCreateInstance Lib "ole32" (rClsID As Any, ByVal pUnkOuter As Long, ByVal dwClsContext As Long, riid As Any, ppv As Any) As Long
+Private Declare Function CoCreateInstance Lib "ole32" (rClsID As Any, ByVal pUnkOuter As Long, ByVal dwClsContext As Long, rIID As Any, ppv As Any) As Long
 Private Declare Function DispCallFunc Lib "oleaut32" (ByVal pvInstance As Long, ByVal oVft As Long, ByVal lCc As Long, ByVal vtReturn As VbVarType, ByVal cActuals As Long, prgVt As Any, prgpVarg As Any, pvargResult As Variant) As Long
 Private Declare Function VariantCopy Lib "oleaut32" (pvarDest As Any, pvargSrc As Any) As Long
 
@@ -36,17 +36,22 @@ Private Type EXCEPINFO
     dwSCode             As Long
 End Type
 
+Private Type GUID
+    Data1               As Currency
+    Data2               As Currency
+End Type
+
 '=========================================================================
 ' Constants and member variables
 '=========================================================================
 
-Private m_lVTable(0 To 10)                  As Long
-Private m_lVTableWindow(0 To 4)             As Long
-Private IID_IUnknown(0 To 4)                As Long
-Private IID_IActiveScript(0 To 4)           As Long
-Private IID_IActiveScriptParse(0 To 4)      As Long
-Private IID_IActiveScriptSite(0 To 4)       As Long
-Private IID_IActiveScriptSiteWindow(0 To 4) As Long
+Private m_lVTable(0 To 10)          As Long
+Private m_lVTableWindow(0 To 4)     As Long
+Private IID_IUnknown                As GUID
+Private IID_IActiveScript           As GUID
+Private IID_IActiveScriptParse      As GUID
+Private IID_IActiveScriptSite       As GUID
+Private IID_IActiveScriptSiteWindow As GUID
 
 Public Type UcsActiveScriptData
     pVTable             As Long
@@ -86,23 +91,36 @@ Private Enum UcsInterfaceVTableIndexEnum
 End Enum
 
 '=========================================================================
-' Methods
+' Error handling
 '=========================================================================
 
-Public Function ActiveScriptInit(uData As UcsActiveScriptData, sLang As String, pCallback As Object) As Boolean
-    Const STR_CLSID_Chakra     As String = "{16D51579-A30B-4C8B-A276-0FF4DC41E755}"
+Private Sub PrintError(sFunction As String)
+    Debug.Print "Critical error: " & Err.Description & " [" & STR_MODULE_NAME & "." & sFunction & "]", Timer
+End Sub
+
+'=========================================================================
+' Functions
+'=========================================================================
+
+Public Function ActiveScriptInit(uData As UcsActiveScriptData, sLang As String, pCallback As Object, Optional Error As String) As Boolean
+    Const FUNC_NAME     As String = "ActiveScriptInit"
     Const CLSCTX_INPROC_SERVER As Long = 1
     Dim hResult         As Long
-    Dim aCLSID(0 To 3)  As Long
+    Dim aCLSID          As GUID
     Dim pUnk            As IUnknown
     
+    On Error GoTo EH
     '--- perform one-time initializations
-    If IID_IUnknown(3) = 0 Then
-        Call IIDFromString(StrPtr("{00000000-0000-0000-C000-000000000046}"), IID_IUnknown(0))
-        Call IIDFromString(StrPtr("{BB1A2AE1-A4F9-11cf-8F20-00805F2CD064}"), IID_IActiveScript(0))
-        Call IIDFromString(StrPtr("{BB1A2AE2-A4F9-11cf-8F20-00805F2CD064}"), IID_IActiveScriptParse(0))
-        Call IIDFromString(StrPtr("{DB01A1E3-A42B-11cf-8F20-00805F2CD064}"), IID_IActiveScriptSite(0))
-        Call IIDFromString(StrPtr("{D10F6761-83E9-11cf-8F20-00805F2CD064}"), IID_IActiveScriptSiteWindow(0))
+    If IID_IUnknown.Data2 = 0 Then
+        IID_IUnknown.Data2 = 504403158265495.5712@
+        IID_IActiveScript.Data1 = 128342581131674.6977@
+        IID_IActiveScript.Data2 = 726435498762961.7295@
+        IID_IActiveScriptParse.Data1 = 128342581131674.6978@
+        IID_IActiveScriptParse.Data2 = 726435498762961.7295@
+        IID_IActiveScriptSite.Data1 = 128342492708874.6979@
+        IID_IActiveScriptSite.Data2 = 726435498762961.7295@
+        IID_IActiveScriptSiteWindow.Data1 = 128338945908194.6977@
+        IID_IActiveScriptSiteWindow.Data2 = 726435498762961.7295@
     End If
     If m_lVTable(0) = 0 Then
         m_lVTable(0) = VBA.CLng(AddressOf IActiveScriptSite_QueryInterface)
@@ -124,22 +142,23 @@ Public Function ActiveScriptInit(uData As UcsActiveScriptData, sLang As String, 
     End If
     '--- instantiate scripting engine
     If LCase$(sLang) = "jscript9" Then
-        Call IIDFromString(StrPtr(STR_CLSID_Chakra), aCLSID(0))
+        aCLSID.Data1 = 551568143666833.5481@
+        aCLSID.Data2 = 618998863008730.077@
     Else
-        Call CLSIDFromProgID(StrPtr(sLang), aCLSID(0))
+        Call CLSIDFromProgID(StrPtr(sLang), aCLSID)
     End If
-    hResult = CoCreateInstance(aCLSID(0), 0, CLSCTX_INPROC_SERVER, IID_IUnknown(0), pUnk)
+    hResult = CoCreateInstance(aCLSID, 0, CLSCTX_INPROC_SERVER, IID_IUnknown, pUnk)
     If hResult < 0 Then
-        Err.Raise hResult, "CoCreateInstance"
+        Err.Raise hResult, "CoCreateInstance(" & sLang & ")"
     End If
     '--- get IActiveScript and IActiveScriptParse interfaces
     Set uData.pScript = Nothing
-    hResult = DispCallByVtbl(ObjPtr(pUnk), IDX_QueryInterface, VarPtr(IID_IActiveScript(0)), VarPtr(uData.pScript))
+    hResult = DispCallByVtbl(ObjPtr(pUnk), IDX_QueryInterface, VarPtr(IID_IActiveScript), VarPtr(uData.pScript))
     If hResult < 0 Then
         Err.Raise hResult, "IUnknown.QueryInterface"
     End If
     Set uData.pParse = Nothing
-    hResult = DispCallByVtbl(ObjPtr(pUnk), IDX_QueryInterface, VarPtr(IID_IActiveScriptParse(0)), VarPtr(uData.pParse))
+    hResult = DispCallByVtbl(ObjPtr(pUnk), IDX_QueryInterface, VarPtr(IID_IActiveScriptParse), VarPtr(uData.pParse))
     If hResult < 0 Then
         Err.Raise hResult, "IUnknown.QueryInterface"
     End If
@@ -160,11 +179,17 @@ Public Function ActiveScriptInit(uData As UcsActiveScriptData, sLang As String, 
     End If
     '--- success
     ActiveScriptInit = True
+    Exit Function
+EH:
+    Error = Err.Description & " in " & Err.Source
+    PrintError FUNC_NAME
 End Function
 
 Public Sub ActiveScriptTerminate(uData As UcsActiveScriptData)
+    Const FUNC_NAME     As String = "ActiveScriptTerminate"
     Dim hResult         As Long
     
+    On Error GoTo EH
     If Not uData.pScript Is Nothing Then
         hResult = DispCallByVtbl(ObjPtr(uData.pScript), IDX_Close)
         If hResult < 0 Then
@@ -176,6 +201,10 @@ Public Sub ActiveScriptTerminate(uData As UcsActiveScriptData)
     Set uData.cObjects = Nothing
     Set uData.pCallback = Nothing
     Set uData.pSite = Nothing
+    Exit Sub
+EH:
+    PrintError FUNC_NAME
+    Resume Next
 End Sub
 
 Public Sub ActiveScriptReset(uData As UcsActiveScriptData)
@@ -330,37 +359,33 @@ End Function
 ' IActiveScriptSite interface
 '=========================================================================
 
-Private Function IActiveScriptSite_QueryInterface(This As UcsActiveScriptData, ByVal riid As Long, pvObj As Long) As Long
-    Dim aIID(0 To 4)    As Long
-    
-    Call CopyMemory(aIID(0), ByVal riid, 16)
-    Select Case aIID(0)
-    Case IID_IUnknown(0)
-        If aIID(1) = IID_IUnknown(1) And aIID(2) = IID_IUnknown(2) And aIID(3) = IID_IUnknown(3) Then
+Private Function IActiveScriptSite_QueryInterface(This As UcsActiveScriptData, rIID As GUID, pvObj As Long) As Long
+    pvObj = 0
+    Select Case rIID.Data1
+    Case IID_IUnknown.Data1
+        If rIID.Data2 = IID_IUnknown.Data2 Then
             pvObj = VarPtr(This)
-            Exit Function
         End If
-    Case IID_IActiveScriptSite(0)
-        If aIID(1) = IID_IActiveScriptSite(1) And aIID(2) = IID_IActiveScriptSite(2) And aIID(3) = IID_IActiveScriptSite(3) Then
+    Case IID_IActiveScriptSite.Data1
+        If rIID.Data2 = IID_IActiveScriptSite.Data2 Then
             pvObj = VarPtr(This)
-            Exit Function
         End If
-    Case IID_IActiveScriptSiteWindow(0)
-        If aIID(1) = IID_IActiveScriptSiteWindow(1) And aIID(2) = IID_IActiveScriptSiteWindow(2) And aIID(3) = IID_IActiveScriptSiteWindow(3) Then
+    Case IID_IActiveScriptSiteWindow.Data1
+        If rIID.Data2 = IID_IActiveScriptSiteWindow.Data2 Then
             pvObj = VarPtr(This) + 4
-            Exit Function
         End If
     End Select
-    pvObj = 0
-    IActiveScriptSite_QueryInterface = E_NOINTERFACE
+    If pvObj = 0 Then
+        IActiveScriptSite_QueryInterface = E_NOINTERFACE
+    End If
 End Function
 
 Private Function IActiveScriptSite_AddRef(This As UcsActiveScriptData) As Long
-    IActiveScriptSite_AddRef = 1
+    '--- do nothing
 End Function
 
 Private Function IActiveScriptSite_Release(This As UcsActiveScriptData) As Long
-    IActiveScriptSite_Release = 1
+    '--- do nothing
 End Function
 
 Private Function IActiveScriptSite_GetLCID(This As UcsActiveScriptData, plcid As Long) As Long
@@ -386,15 +411,15 @@ Private Function IActiveScriptSite_GetItemInfo(This As UcsActiveScriptData, ByVa
 End Function
 
 Private Function IActiveScriptSite_GetDocVersionString(This As UcsActiveScriptData, ByVal pbstrVersion As Long) As Long
-
+    IActiveScriptSite_GetDocVersionString = E_NOTIMPL
 End Function
 
 Private Function IActiveScriptSite_OnScriptTerminate(This As UcsActiveScriptData, pvarResult As Variant, ByVal pExcepinfo As Long) As Long
-
+    IActiveScriptSite_OnScriptTerminate = E_NOTIMPL
 End Function
 
 Private Function IActiveScriptSite_OnStateChange(This As UcsActiveScriptData, ByVal ssScriptState As Long) As Long
-
+    IActiveScriptSite_OnStateChange = E_NOTIMPL
 End Function
 
 Private Function IActiveScriptSite_OnScriptError(This As UcsActiveScriptData, ByVal pScriptError As IUnknown) As Long
@@ -413,48 +438,44 @@ Private Function IActiveScriptSite_OnScriptError(This As UcsActiveScriptData, By
 End Function
 
 Private Function IActiveScriptSite_OnEnterScript(This As UcsActiveScriptData) As Long
-
+    IActiveScriptSite_OnEnterScript = E_NOTIMPL
 End Function
 
 Private Function IActiveScriptSite_OnLeaveScript(This As UcsActiveScriptData) As Long
-
+    IActiveScriptSite_OnLeaveScript = E_NOTIMPL
 End Function
 
 '=========================================================================
 ' IActiveScriptSiteWindow interface
 '=========================================================================
 
-Private Function IActiveScriptSiteWindow_QueryInterface(This As UcsActiveScriptSiteWindowData, ByVal riid As Long, pvObj As Long) As Long
-    Dim aIID(0 To 4)    As Long
-    
-    Call CopyMemory(aIID(0), ByVal riid, 16)
-    Select Case aIID(0)
-    Case IID_IUnknown(0)
-        If aIID(1) = IID_IUnknown(1) And aIID(2) = IID_IUnknown(2) And aIID(3) = IID_IUnknown(3) Then
+Private Function IActiveScriptSiteWindow_QueryInterface(This As UcsActiveScriptSiteWindowData, rIID As GUID, pvObj As Long) As Long
+    pvObj = 0
+    Select Case rIID.Data1
+    Case IID_IUnknown.Data1
+        If rIID.Data2 = IID_IUnknown.Data2 Then
             pvObj = VarPtr(This) - 4
-            Exit Function
         End If
-    Case IID_IActiveScriptSite(0)
-        If aIID(1) = IID_IActiveScriptSite(1) And aIID(2) = IID_IActiveScriptSite(2) And aIID(3) = IID_IActiveScriptSite(3) Then
+    Case IID_IActiveScriptSite.Data1
+        If rIID.Data2 = IID_IActiveScriptSite.Data2 Then
             pvObj = VarPtr(This) - 4
-            Exit Function
         End If
-    Case IID_IActiveScriptSiteWindow(0)
-        If aIID(1) = IID_IActiveScriptSiteWindow(1) And aIID(2) = IID_IActiveScriptSiteWindow(2) And aIID(3) = IID_IActiveScriptSiteWindow(3) Then
+    Case IID_IActiveScriptSiteWindow.Data1
+        If rIID.Data2 = IID_IActiveScriptSiteWindow.Data2 Then
             pvObj = VarPtr(This)
-            Exit Function
         End If
     End Select
-    pvObj = 0
-    IActiveScriptSiteWindow_QueryInterface = E_NOINTERFACE
+    If pvObj = 0 Then
+        IActiveScriptSiteWindow_QueryInterface = E_NOINTERFACE
+    End If
 End Function
 
 Private Function IActiveScriptSiteWindow_AddRef(This As UcsActiveScriptSiteWindowData) As Long
-    IActiveScriptSiteWindow_AddRef = 1
+    '--- do nothing
 End Function
 
 Private Function IActiveScriptSiteWindow_Release(This As UcsActiveScriptSiteWindowData) As Long
-    IActiveScriptSiteWindow_Release = 1
+    '--- do nothing
 End Function
 
 Private Function IActiveScriptSiteWindow_GetWindow(This As UcsActiveScriptSiteWindowData, phwnd As Long) As Long
@@ -463,6 +484,6 @@ Private Function IActiveScriptSiteWindow_GetWindow(This As UcsActiveScriptSiteWi
     End If
 End Function
 
-Private Sub IActiveScriptSiteWindow_EnableModeless(This As UcsActiveScriptSiteWindowData, ByVal fEnable As Long)
-
-End Sub
+Private Function IActiveScriptSiteWindow_EnableModeless(This As UcsActiveScriptSiteWindowData, ByVal fEnable As Long) As Long
+    IActiveScriptSiteWindow_EnableModeless = E_NOTIMPL
+End Function

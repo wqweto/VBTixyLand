@@ -140,10 +140,10 @@ Private m_uScript               As UcsActiveScriptData
 ' Error handling
 '=========================================================================
 
-Private Function PrintError(sFunction As String) As VbMsgBoxResult
+Private Sub PrintError(sFunction As String)
     m_sLastError = Err.Description
     Debug.Print "Critical error: " & Err.Description & " [" & STR_MODULE_NAME & "." & sFunction & "]", Timer
-End Function
+End Sub
 
 '=========================================================================
 ' Properties
@@ -698,11 +698,11 @@ Private Sub UserControl_Initialize()
         Call GdiplusStartup(0, aInput(0))
     End If
     m_eContainerScaleMode = vbTwips
-    On Error Resume Next
     If Not ActiveScriptInit(m_uScript, "JScript9", Me) Then
-        ActiveScriptInit m_uScript, "JScript", Me
+        If Not ActiveScriptInit(m_uScript, "JScript", Me) Then
+            ActiveScriptTerminate m_uScript
+        End If
     End If
-    On Error GoTo 0
     ActiveScriptRunCode m_uScript, STR_POLYFILL
 End Sub
 
