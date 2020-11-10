@@ -167,7 +167,7 @@ End Property
 
 Property Let Opacity(ByVal sngValue As Single)
     If m_sngOpacity <> sngValue Then
-        m_sngOpacity = IIf(sngValue > 1, 1, IIf(sngValue < 0, 0, sngValue))
+        m_sngOpacity = Clamp(sngValue, 0, 1)
         pvRefresh
         PropertyChanged
     End If
@@ -180,7 +180,7 @@ End Property
 Property Let MatrixSize(ByVal lValue As Long)
     If m_lMatrixSize <> lValue Then
         m_lMatrixSize = IIf(lValue < 1, 1, lValue)
-        pvResetMatrix
+        pvResetMatrix m_aMatrix
         pvRefresh
         PropertyChanged
     End If
@@ -197,7 +197,7 @@ Property Let Expression(sValue As String)
         ActiveScriptRunCode m_uScript, Replace(Replace(STR_FUNC_TEMPLATE, "%1", "__eval__"), "%2", sValue)
         On Error GoTo 0
         m_sExpression = sValue
-        pvResetMatrix
+        pvResetMatrix m_aMatrix
         pvRefresh
         PropertyChanged
     End If
@@ -290,8 +290,8 @@ End Function
 
 '= private ===============================================================
 
-Private Sub pvResetMatrix()
-    ReDim m_aMatrix(-1 To -1) As Single
+Private Sub pvResetMatrix(aMatrix() As Single)
+    ReDim aMatrix(-1 To -1) As Single
     m_dblStartTime = TimerEx
     If Ambient.UserMode Then
         Set m_pTimer = InitFireOnceTimerThunk(Me, pvAddressOfTimerProc.TimerProc(), Delay:=17)
@@ -305,7 +305,7 @@ Private Function pvPrepareMatrix(ByVal sngElapsed As Single, aMatrix() As Single
     On Error GoTo EH
     ReDim aMatrix(0 To m_lMatrixSize * m_lMatrixSize - 1) As Single
     For lIdx = 0 To m_lMatrixSize * m_lMatrixSize - 1
-        m_aMatrix(lIdx) = pvEvalCellValue(sngElapsed, lIdx, lIdx Mod m_lMatrixSize, lIdx \ m_lMatrixSize)
+        aMatrix(lIdx) = Clamp(pvEvalCell(sngElapsed, lIdx), -1, 1)
     Next
     '--- success
     pvPrepareMatrix = True
@@ -315,15 +315,15 @@ EH:
     Resume Next
 End Function
 
-Private Function pvEvalCellValue(ByVal sngT As Single, ByVal lIdx As Long, ByVal lX As Long, ByVal lY As Long) As Single
+Private Function pvEvalCell(ByVal sngElapsed As Single, ByVal lIdx As Long) As Single
     Dim vResult         As Variant
-    
+
     On Error GoTo QH
-    vResult = ActiveScriptCallFunction(m_uScript, "__eval__", sngT, lIdx, lX, lY)
+    vResult = ActiveScriptCallFunction(m_uScript, "__eval__", sngElapsed, lIdx, lIdx Mod m_lMatrixSize, lIdx \ m_lMatrixSize)
     If VarType(vResult) = vbBoolean Then
-        pvEvalCellValue = -vResult
+        pvEvalCell = -vResult
     Else
-        pvEvalCellValue = vResult + 0
+        pvEvalCell = vResult + 0!
     End If
 QH:
 End Function
@@ -370,7 +370,7 @@ Private Function pvPaintControl(ByVal hDC As Long) As Boolean
     sngStepX = ScaleWidth / m_lMatrixSize
     sngStepY = ScaleHeight / m_lMatrixSize
     For lIdx = 0 To m_lMatrixSize * m_lMatrixSize - 1
-        sngValue = (1 - Abs(Clamp(m_aMatrix(lIdx), -1, 1))) * 0.95 + 0.05
+        sngValue = (1 - Abs(m_aMatrix(lIdx))) * 0.95 + 0.05
         sngOffsetX = sngValue * sngStepX
         sngOffsetY = sngValue * sngStepY
         If CheckFailed(GdipFillEllipse(hGraphics, IIf(m_aMatrix(lIdx) >= 0, hWhiteBrush, hRedBrush), _
@@ -640,7 +640,7 @@ Private Sub UserControl_InitProperties()
     m_sngOpacity = DEF_OPACITY
     m_lMatrixSize = DEF_MATRIXSIZE
     m_sExpression = DEF_EXPRESSION
-    pvResetMatrix
+    pvResetMatrix m_aMatrix
     pvRefresh
     Exit Sub
 EH:
@@ -658,7 +658,7 @@ Private Sub UserControl_ReadProperties(PropBag As PropertyBag)
         m_lMatrixSize = .ReadProperty("MatrixSize", DEF_MATRIXSIZE)
         m_sExpression = .ReadProperty("Expression", DEF_EXPRESSION)
     End With
-    pvResetMatrix
+    pvResetMatrix m_aMatrix
     pvRefresh
     Exit Sub
 EH:
