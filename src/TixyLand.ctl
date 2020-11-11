@@ -39,20 +39,15 @@ Event Click()
 Event OwnerDraw(ByVal hGraphics As Long)
 Event DblClick()
 Event ContextMenu()
-Event MouseDown(Button As Integer, Shift As Integer, x As Single, y As Single)
-Event MouseMove(Button As Integer, Shift As Integer, x As Single, y As Single)
-Event MouseUp(Button As Integer, Shift As Integer, x As Single, y As Single)
+Event MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+Event MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
+Event MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
 Event ScriptError()
 
 '=========================================================================
 ' API
 '=========================================================================
 
-'--- DIB Section constants
-Private Const DIB_RGB_COLORS                As Long = 0 '  color table in RGBs
-Private Const AC_SRC_ALPHA                  As Long = 1
-'--- for GdipSetSmoothingMode
-Private Const SmoothingModeAntiAlias        As Long = 4
 '--- for Modern Subclassing Thunk (MST)
 Private Const MEM_COMMIT                    As Long = &H1000
 Private Const PAGE_EXECUTE_READWRITE        As Long = &H40
@@ -64,6 +59,10 @@ Private Declare Function DeleteDC Lib "gdi32" (ByVal hDC As Long) As Long
 Private Declare Function SelectObject Lib "gdi32" (ByVal hDC As Long, ByVal hObject As Long) As Long
 Private Declare Function DeleteObject Lib "gdi32" (ByVal hObject As Long) As Long
 Private Declare Function CreateDIBSection Lib "gdi32" (ByVal hDC As Long, lpBitsInfo As BITMAPINFOHEADER, ByVal wUsage As Long, lpBits As Long, ByVal Handle As Long, ByVal dw As Long) As Long
+Private Declare Function CreateSolidBrush Lib "gdi32" (ByVal crColor As Long) As Long
+Private Declare Function Ellipse Lib "gdi32" (ByVal hDC As Long, ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long) As Long
+Private Declare Function SetStretchBltMode Lib "gdi32" (ByVal hDC As Long, ByVal nStretchMode As Long) As Long
+Private Declare Function StretchBlt Lib "gdi32" (ByVal hDC As Long, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hdcSrc As Long, ByVal xSrc As Long, ByVal ySrc As Long, ByVal nSrcWidth As Long, ByVal nSrcHeight As Long, ByVal dwRop As Long) As Long
 Private Declare Function AlphaBlend Lib "msimg32" (ByVal hDestDC As Long, ByVal lX As Long, ByVal lY As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hSrcDC As Long, ByVal xSrc As Long, ByVal ySrc As Long, ByVal widthSrc As Long, ByVal heightSrc As Long, ByVal blendFunct As Long) As Boolean
 Private Declare Function QueryPerformanceCounter Lib "kernel32" (lpPerformanceCount As Currency) As Long
 Private Declare Function QueryPerformanceFrequency Lib "kernel32" (lpFrequency As Currency) As Long
@@ -339,12 +338,13 @@ End Sub
 
 Private Function pvPaintControl(ByVal hDC As Long) As Boolean
     Const FUNC_NAME     As String = "pvPaintControl"
+    Const SmoothingModeAntiAlias As Long = 4
     Dim hGraphics       As Long
-    Dim lIdx            As Long
     Dim hWhiteBrush     As Long
     Dim hRedBrush       As Long
     Dim sngStepX        As Single
     Dim sngStepY        As Single
+    Dim lIdx            As Long
     Dim sngValue        As Single
     Dim sngOffsetX      As Single
     Dim sngOffsetY      As Single
@@ -404,6 +404,65 @@ EH:
     Resume QH
 End Function
 
+Private Function pvPaintLegacy(ByVal hDC As Long, ByVal sngScale As Single) As Boolean
+    Const FUNC_NAME     As String = "pvPaintLegacy"
+    Dim hWhiteBrush     As Long
+    Dim hRedBrush       As Long
+    Dim hPrevBrush      As Long
+    Dim sngStepX        As Single
+    Dim sngStepY        As Single
+    Dim lIdx            As Long
+    Dim sngValue        As Single
+    Dim sngOffsetX      As Single
+    Dim sngOffsetY      As Single
+    Dim sngX            As Single
+    Dim sngY            As Single
+    
+    On Error GoTo EH
+    If Not m_bShown Then
+        m_bShown = True
+        pvPrepareMatrix TimerEx - m_dblStartTime, m_aMatrix
+        pvPrepareAttribs m_sngOpacity, m_hAttributes
+    End If
+    hWhiteBrush = CreateSolidBrush(&HFFFFFF)
+    hRedBrush = CreateSolidBrush(&H3020FF)
+    hPrevBrush = SelectObject(hDC, hWhiteBrush)
+    sngStepX = ScaleWidth / m_lMatrixSize
+    sngStepY = ScaleHeight / m_lMatrixSize
+    For lIdx = 0 To m_lMatrixSize * m_lMatrixSize - 1
+        sngValue = (1 - Abs(m_aMatrix(lIdx))) * 0.95 + 0.05
+        sngOffsetX = sngValue * sngStepX
+        sngOffsetY = sngValue * sngStepY
+        Call SelectObject(hDC, IIf(m_aMatrix(lIdx) >= 0, hWhiteBrush, hRedBrush))
+        sngX = sngStepX * (lIdx Mod m_lMatrixSize) + sngOffsetX / 2
+        sngY = sngStepY * (lIdx \ m_lMatrixSize) + sngOffsetY / 2
+        Call Ellipse(hDC, _
+            Round(sngScale * sngX), _
+            Round(sngScale * sngY), _
+            Round(sngScale * (sngX + sngStepX - sngOffsetX)), _
+            Round(sngScale * (sngY + sngStepY - sngOffsetY)))
+    Next
+    '--- success
+    pvPaintLegacy = True
+QH:
+    On Error Resume Next
+    If hPrevBrush <> 0 Then
+        Call SelectObject(hDC, hPrevBrush)
+    End If
+    If hRedBrush <> 0 Then
+        Call DeleteObject(hRedBrush)
+        hRedBrush = 0
+    End If
+    If hWhiteBrush <> 0 Then
+        Call DeleteObject(hWhiteBrush)
+        hWhiteBrush = 0
+    End If
+    Exit Function
+EH:
+    PrintError FUNC_NAME
+    Resume QH
+End Function
+
 Private Function pvPrepareAttribs(ByVal sngAlpha As Single, hAttributes As Long) As Boolean
     Const FUNC_NAME     As String = "pvPrepareAttribs"
     Dim clrMatrix(0 To 4, 0 To 4) As Single
@@ -446,6 +505,7 @@ End Function
 
 Private Function pvCreateDib(ByVal hMemDC As Long, ByVal lWidth As Long, ByVal lHeight As Long, hDib As Long, Optional lpBits As Long) As Boolean
     Const FUNC_NAME     As String = "pvCreateDib"
+    Const DIB_RGB_COLORS As Long = 0
     Dim uHdr            As BITMAPINFOHEADER
     
     On Error GoTo EH
@@ -491,11 +551,11 @@ Private Function ToScaleMode(sScaleUnits As String) As ScaleModeConstants
     End Select
 End Function
 
-Private Sub pvHandleMouseDown(Button As Integer, Shift As Integer, x As Single, y As Single)
+Private Sub pvHandleMouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
     m_nDownButton = Button
     m_nDownShift = Shift
-    m_sngDownX = x
-    m_sngDownY = y
+    m_sngDownX = X
+    m_sngDownY = Y
 End Sub
 
 Private Property Get TimerEx() As Double
@@ -529,24 +589,24 @@ End Function
 ' Events
 '=========================================================================
 
-Private Sub UserControl_MouseDown(Button As Integer, Shift As Integer, x As Single, y As Single)
-    RaiseEvent MouseDown(Button, Shift, ScaleX(x, ScaleMode, m_eContainerScaleMode), ScaleY(y, ScaleMode, m_eContainerScaleMode))
-    pvHandleMouseDown Button, Shift, x, y
+Private Sub UserControl_MouseDown(Button As Integer, Shift As Integer, X As Single, Y As Single)
+    RaiseEvent MouseDown(Button, Shift, ScaleX(X, ScaleMode, m_eContainerScaleMode), ScaleY(Y, ScaleMode, m_eContainerScaleMode))
+    pvHandleMouseDown Button, Shift, X, Y
 End Sub
 
-Private Sub UserControl_MouseMove(Button As Integer, Shift As Integer, x As Single, y As Single)
-    RaiseEvent MouseMove(Button, Shift, ScaleX(x, ScaleMode, m_eContainerScaleMode), ScaleY(y, ScaleMode, m_eContainerScaleMode))
+Private Sub UserControl_MouseMove(Button As Integer, Shift As Integer, X As Single, Y As Single)
+    RaiseEvent MouseMove(Button, Shift, ScaleX(X, ScaleMode, m_eContainerScaleMode), ScaleY(Y, ScaleMode, m_eContainerScaleMode))
 End Sub
 
-Private Sub UserControl_MouseUp(Button As Integer, Shift As Integer, x As Single, y As Single)
+Private Sub UserControl_MouseUp(Button As Integer, Shift As Integer, X As Single, Y As Single)
     Const FUNC_NAME     As String = "UserControl_MouseUp"
     
     On Error GoTo EH
-    RaiseEvent MouseUp(Button, Shift, ScaleX(x, ScaleMode, m_eContainerScaleMode), ScaleY(y, ScaleMode, m_eContainerScaleMode))
+    RaiseEvent MouseUp(Button, Shift, ScaleX(X, ScaleMode, m_eContainerScaleMode), ScaleY(Y, ScaleMode, m_eContainerScaleMode))
     If Button = -1 Then
         GoTo QH
     End If
-    If Button <> 0 And x >= 0 And x < ScaleWidth And y >= 0 And y < ScaleHeight Then
+    If Button <> 0 And X >= 0 And X < ScaleWidth And Y >= 0 And Y < ScaleHeight Then
         If (m_nDownButton And Button And vbLeftButton) <> 0 Then
             RaiseEvent Click
         ElseIf (m_nDownButton And Button And vbRightButton) <> 0 Then
@@ -566,7 +626,7 @@ Private Sub UserControl_DblClick()
     RaiseEvent DblClick
 End Sub
 
-Private Sub UserControl_HitTest(x As Single, y As Single, HitResult As Integer)
+Private Sub UserControl_HitTest(X As Single, Y As Single, HitResult As Integer)
     HitResult = vbHitResultHit
 End Sub
 
@@ -580,33 +640,56 @@ End Sub
 
 Private Sub UserControl_Paint()
     Const FUNC_NAME     As String = "UserControl_Paint"
+    Const COLORONCOLOR  As Long = 3
+    Const HALFTONE      As Long = 4
+    Const AC_SRC_ALPHA  As Long = 1
     Const Opacity       As Long = &HFF
     Dim hMemDC          As Long
     Dim hPrevDib        As Long
+    Dim sngScale        As Single
     
     On Error GoTo EH
+    If LenB(m_sExpression) = 0 Then
+        GoTo DefPaint
+    End If
+    sngScale = IIf(GetModuleHandle("gdiplus") = 0, 4, 1)
     If AutoRedraw Then
         hMemDC = CreateCompatibleDC(hDC)
         If hMemDC = 0 Then
             GoTo DefPaint
         End If
         If m_hRedrawDib = 0 Then
-            If Not pvCreateDib(hMemDC, ScaleWidth, ScaleHeight, m_hRedrawDib) Then
+            If Not pvCreateDib(hMemDC, sngScale * ScaleWidth, sngScale * ScaleHeight, m_hRedrawDib) Then
                 GoTo DefPaint
             End If
             hPrevDib = SelectObject(hMemDC, m_hRedrawDib)
-            If Not pvPaintControl(hMemDC) Then
-                GoTo DefPaint
+            If sngScale > 1 Then
+                If Not pvPaintLegacy(hMemDC, sngScale) Then
+                    GoTo DefPaint
+                End If
+            Else
+                If Not pvPaintControl(hMemDC) Then
+                    GoTo DefPaint
+                End If
             End If
         Else
             hPrevDib = SelectObject(hMemDC, m_hRedrawDib)
         End If
-        If AlphaBlend(hDC, 0, 0, ScaleWidth, ScaleHeight, hMemDC, 0, 0, ScaleWidth, ScaleHeight, AC_SRC_ALPHA * &H1000000 + Opacity * &H10000) = 0 Then
+        If sngScale > 1 Then
+            Call SetStretchBltMode(hDC, HALFTONE)
+            Call StretchBlt(hDC, 0, 0, ScaleWidth, ScaleHeight, hMemDC, 0, 0, sngScale * ScaleWidth, sngScale * ScaleHeight, vbSrcCopy)
+        ElseIf AlphaBlend(hDC, 0, 0, ScaleWidth, ScaleHeight, hMemDC, 0, 0, ScaleWidth, ScaleHeight, AC_SRC_ALPHA * &H1000000 + Opacity * &H10000) = 0 Then
             GoTo DefPaint
         End If
     Else
-        If Not pvPaintControl(hDC) Then
-            GoTo DefPaint
+        If sngScale > 1 Then
+            If Not pvPaintLegacy(hDC, 1) Then
+                GoTo DefPaint
+            End If
+        Else
+            If Not pvPaintControl(hDC) Then
+                GoTo DefPaint
+            End If
         End If
     End If
 QH:
@@ -695,7 +778,9 @@ Private Sub UserControl_Initialize()
     
     If GetModuleHandle("gdiplus") = 0 Then
         aInput(0) = 1
+        On Error Resume Next
         Call GdiplusStartup(0, aInput(0))
+        On Error GoTo 0
     End If
     m_eContainerScaleMode = vbTwips
     If Not ActiveScriptInit(m_uScript, "JScript9", Me) Then
