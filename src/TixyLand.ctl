@@ -63,6 +63,7 @@ Private Declare Function CreateSolidBrush Lib "gdi32" (ByVal crColor As Long) As
 Private Declare Function Ellipse Lib "gdi32" (ByVal hDC As Long, ByVal X1 As Long, ByVal Y1 As Long, ByVal X2 As Long, ByVal Y2 As Long) As Long
 Private Declare Function SetStretchBltMode Lib "gdi32" (ByVal hDC As Long, ByVal nStretchMode As Long) As Long
 Private Declare Function StretchBlt Lib "gdi32" (ByVal hDC As Long, ByVal X As Long, ByVal Y As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hdcSrc As Long, ByVal xSrc As Long, ByVal ySrc As Long, ByVal nSrcWidth As Long, ByVal nSrcHeight As Long, ByVal dwRop As Long) As Long
+Private Declare Function GetStockObject Lib "gdi32" (ByVal nIndex As Long) As Long
 Private Declare Function AlphaBlend Lib "msimg32" (ByVal hDestDC As Long, ByVal lX As Long, ByVal lY As Long, ByVal nWidth As Long, ByVal nHeight As Long, ByVal hSrcDC As Long, ByVal xSrc As Long, ByVal ySrc As Long, ByVal widthSrc As Long, ByVal heightSrc As Long, ByVal blendFunct As Long) As Boolean
 Private Declare Function QueryPerformanceCounter Lib "kernel32" (lpPerformanceCount As Currency) As Long
 Private Declare Function QueryPerformanceFrequency Lib "kernel32" (lpFrequency As Currency) As Long
@@ -405,6 +406,7 @@ EH:
 End Function
 
 Private Function pvPaintLegacy(ByVal hDC As Long, ByVal sngScale As Single) As Boolean
+    Const NULL_PEN      As Long = 8
     Const FUNC_NAME     As String = "pvPaintLegacy"
     Dim hWhiteBrush     As Long
     Dim hRedBrush       As Long
@@ -424,6 +426,7 @@ Private Function pvPaintLegacy(ByVal hDC As Long, ByVal sngScale As Single) As B
         pvPrepareMatrix TimerEx - m_dblStartTime, m_aMatrix
         pvPrepareAttribs m_sngOpacity, m_hAttributes
     End If
+    Call SelectObject(hDC, GetStockObject(NULL_PEN))
     hWhiteBrush = CreateSolidBrush(&HFFFFFF)
     hRedBrush = CreateSolidBrush(&H3020FF)
     hPrevBrush = SelectObject(hDC, hWhiteBrush)
@@ -640,7 +643,6 @@ End Sub
 
 Private Sub UserControl_Paint()
     Const FUNC_NAME     As String = "UserControl_Paint"
-    Const COLORONCOLOR  As Long = 3
     Const HALFTONE      As Long = 4
     Const AC_SRC_ALPHA  As Long = 1
     Const Opacity       As Long = &HFF
@@ -664,6 +666,7 @@ Private Sub UserControl_Paint()
             End If
             hPrevDib = SelectObject(hMemDC, m_hRedrawDib)
             If sngScale > 1 Then
+                Call StretchBlt(hMemDC, 0, 0, sngScale * ScaleWidth, sngScale * ScaleHeight, hDC, 0, 0, ScaleWidth, ScaleHeight, vbSrcCopy)
                 If Not pvPaintLegacy(hMemDC, sngScale) Then
                     GoTo DefPaint
                 End If
